@@ -50,13 +50,13 @@ async def health_detail():
     return {"status": "ok", "redis": redis_status}
 
 
-from app.routers import auth  # noqa: E402
+from app.routers import auth, races  # noqa: E402
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(races.router, prefix="/races", tags=["races"])
 
 # Routers added in future blocks:
-# from app.routers import races, telemetry, predictions, users
-# app.include_router(races.router, prefix="/races", tags=["races"])
+# from app.routers import telemetry, predictions, users
 # app.include_router(telemetry.router, prefix="/telemetry", tags=["telemetry"])
 # app.include_router(predictions.router, prefix="/predictions", tags=["predictions"])
 # app.include_router(users.router, prefix="/users", tags=["users"])
