@@ -208,8 +208,8 @@ Redis hosted on **Railway** (free tier).
 |---|---|---|
 | 0 | Project scaffold | ✅ Complete |
 | 1 | Authentication | ✅ Complete |
-| 2 | Home screen + Race selection | 🔄 In progress |
-| 3 | Telemetry graph + AI summary | ⏳ Pending |
+| 2 | Home screen + Race selection | ✅ Complete |
+| 3 | Telemetry graph + AI summary | ✅ Complete |
 | 4 | Race results + Driver comparison | ⏳ Pending |
 | 5 | Race prediction module | ⏳ Pending |
 | 6 | Profile, preferences + polish | ⏳ Pending |
