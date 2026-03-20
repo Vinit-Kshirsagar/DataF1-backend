@@ -10,11 +10,9 @@ from app.redis_client import get_redis, close_redis
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     os.makedirs(settings.FASTF1_CACHE_DIR, exist_ok=True)
-    await get_redis()  # warm up connection
+    await get_redis()
     yield
-    # Shutdown
     await close_redis()
 
 
@@ -27,7 +25,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,13 +48,13 @@ async def health_detail():
     return {"status": "ok", "redis": redis_status}
 
 
-from app.routers import auth, races  # noqa: E402
+from app.routers import auth, races, telemetry  # noqa: E402
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(races.router, prefix="/races", tags=["races"])
+app.include_router(telemetry.router, prefix="/telemetry", tags=["telemetry"])
 
-# Routers added in future blocks:
-# from app.routers import telemetry, predictions, users
-# app.include_router(telemetry.router, prefix="/telemetry", tags=["telemetry"])
+# Future blocks:
+# from app.routers import predictions, users
 # app.include_router(predictions.router, prefix="/predictions", tags=["predictions"])
 # app.include_router(users.router, prefix="/users", tags=["users"])
