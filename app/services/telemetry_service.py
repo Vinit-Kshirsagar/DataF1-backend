@@ -153,7 +153,7 @@ async def get_telemetry(
 
     meta = METRIC_META[metric]
     session = fastf1.get_session(year, round_number, session_key)
-    session.load(telemetry=True, weather=False, messages=False, laps=True)
+    session.load(telemetry=True, weather=False, messages=False, laps=True, livedata=None)
 
     results = session.results
     driver_row = results[results["Abbreviation"] == driver_code]
@@ -309,7 +309,7 @@ async def get_comparison(
 
     meta = METRIC_META[metric]
     session = fastf1.get_session(year, round_number, session_key)
-    session.load(telemetry=True, weather=False, messages=False, laps=True)
+    session.load(telemetry=True, weather=False, messages=False, laps=True, livedata=None)
     results = session.results
 
     def _driver_info(code: str):
@@ -406,3 +406,4 @@ async def get_comparison(
         logger.warning(f"Failed to cache comparison: {e}")
 
     return response
+# Note: position_data loading is disabled — not needed for telemetry channels
