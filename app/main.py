@@ -34,7 +34,7 @@ app.add_middleware(
 
 @app.get("/", tags=["health"])
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "1.0.0"}
 
 
 @app.get("/health", tags=["health"])
@@ -48,13 +48,9 @@ async def health_detail():
     return {"status": "ok", "redis": redis_status}
 
 
-from app.routers import auth, races, telemetry  # noqa: E402
+from app.routers import auth, races, telemetry, results  # noqa: E402
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(races.router, prefix="/races", tags=["races"])
 app.include_router(telemetry.router, prefix="/telemetry", tags=["telemetry"])
-
-# Future blocks:
-# from app.routers import predictions, users
-# app.include_router(predictions.router, prefix="/predictions", tags=["predictions"])
-# app.include_router(users.router, prefix="/users", tags=["users"])
+app.include_router(results.router, prefix="/races", tags=["results"])

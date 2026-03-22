@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: dataf1-api
+    runtime: python
+    plan: starter          # $7/month — no cold starts, essential for demos
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false        # set manually in Render dashboard
+      - key: REDIS_URL
+        sync: false        # set manually in Render dashboard
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false        # set manually in Render dashboard
+      - key: FASTF1_CACHE_DIR
+        value: /tmp/fastf1
+      - key: PYTHON_VERSION
+        value: 3.11.8
+    disk:
+      name: fastf1-cache
+      mountPath: /tmp/fastf1
+      sizeGB: 1            # FastF1 cache persists across deploys
