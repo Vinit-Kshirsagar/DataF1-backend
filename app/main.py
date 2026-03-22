@@ -54,3 +54,23 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(races.router, prefix="/races", tags=["races"])
 app.include_router(telemetry.router, prefix="/telemetry", tags=["telemetry"])
 app.include_router(results.router, prefix="/races", tags=["results"])
+
+
+@app.get("/warmup", tags=["health"])
+async def warmup():
+    """Pre-warms FastF1 cache for the latest race."""
+    import asyncio
+    asyncio.create_task(_warm_cache())
+    return {"status": "warming"}
+
+
+async def _warm_cache():
+    import fastf1
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        session = fastf1.get_session(2026, 1, "R")
+        session.load(telemetry=True, weather=False, messages=False, laps=True)
+        logger.info("Warmup complete")
+    except Exception as e:
+        logger.error(f"Warmup failed: {e}")
