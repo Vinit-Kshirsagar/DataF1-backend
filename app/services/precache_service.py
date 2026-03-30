@@ -10,113 +10,104 @@ from app.services import races_service, telemetry_service
 
 logger = logging.getLogger(__name__)
 
-# Top drivers to pre-cache telemetry for
-PRIORITY_DRIVERS = ["VER", "NOR", "LEC", "HAM", "RUS"]
+PRIORITY_DRIVERS = ["VER", "NOR", "LEC", "HAM", "RUS", "SAI", "ANT", "PIA"]
 PRIORITY_METRICS = ["throttle", "speed", "lap_time"]
+LAST_N_RACES = 3
 
 
-async def get_current_round(year: int) -> int:
-    """Find the most recently completed race round."""
+async def get_completed_rounds(year: int) -> list[int]:
+    """Get the last N completed race rounds."""
     try:
         schedule = fastf1.get_event_schedule(year, include_testing=False)
         today = datetime.now(timezone.utc)
         past = schedule[schedule["EventDate"] < today]
         if past.empty:
-            return 1
-        return int(past.iloc[-1]["RoundNumber"])
+            return [1]
+        rounds = list(past["RoundNumber"].astype(int))
+        return rounds[-LAST_N_RACES:]
     except Exception as e:
-        logger.warning(f"Could not determine current round: {e}")
-        return 1
+        logger.warning(f"Could not get completed rounds: {e}")
+        return [1]
 
 
 async def precache_race_schedule(year: int) -> None:
-    """Pre-cache the full season schedule."""
+    """Pre-cache full season schedule — never changes."""
     try:
-        logger.info(f"Pre-caching {year} race schedule...")
-        races = await races_service.get_races(year)
-        logger.info(f"Cached {len(races)} races for {year}")
+        logger.info(f"Pre-caching {year} schedule...")
+        await races_service.get_races(year)
+        logger.info(f"✓ Schedule cached")
     except Exception as e:
-        logger.error(f"Failed to pre-cache schedule: {e}")
+        logger.error(f"Schedule cache failed: {e}")
 
 
-async def precache_sessions(year: int, round_number: int) -> None:
-    """Pre-cache sessions and drivers for a race weekend."""
-    try:
-        logger.info(f"Pre-caching sessions for {year} R{round_number}...")
-        sessions = await races_service.get_sessions(year, round_number)
+async def precache_all_sessions_and_drivers(year: int, rounds: list[int]) -> None:
+    """Pre-cache sessions + drivers for given rounds."""
+    for round_number in rounds:
+        try:
+            logger.info(f"Pre-caching sessions+drivers R{round_number}...")
+            sessions = await races_service.get_sessions(year, round_number)
+            for session in sessions:
+                try:
+                    await races_service.get_drivers(
+                        year, round_number, session.key)
+                    logger.info(f"  ✓ {session.name} drivers")
+                except Exception as e:
+                    logger.warning(f"  ✗ {session.name}: {e}")
+        except Exception as e:
+            logger.error(f"Sessions cache failed R{round_number}: {e}")
 
-        for session in sessions:
-            try:
-                await races_service.get_drivers(year, round_number, session.key)
-                logger.info(f"  Cached drivers for {session.name}")
-            except Exception as e:
-                logger.warning(f"  Failed drivers for {session.name}: {e}")
 
-    except Exception as e:
-        logger.error(f"Failed to pre-cache sessions R{round_number}: {e}")
+async def precache_telemetry_batch(year: int, rounds: list[int]) -> None:
+    """Pre-cache Race telemetry for priority drivers × metrics."""
+    redis = await get_redis()
 
-
-async def precache_telemetry(year: int, round_number: int) -> None:
-    """Pre-cache telemetry for priority drivers in the Race session."""
-    logger.info(f"Pre-caching telemetry for {year} R{round_number}...")
-
-    for driver in PRIORITY_DRIVERS:
-        for metric in PRIORITY_METRICS:
-            try:
+    for round_number in rounds:
+        logger.info(f"Pre-caching telemetry R{round_number}...")
+        for driver in PRIORITY_DRIVERS:
+            for metric in PRIORITY_METRICS:
                 cache_key = (
                     f"telemetry:{year}:{round_number}:R:{driver}:{metric}:0"
                 )
-                redis = await get_redis()
-                cached = await redis.get(cache_key)
-                if cached:
-                    logger.info(f"  Already cached: {driver} {metric}")
-                    continue
+                try:
+                    # Skip if already cached
+                    if await redis.get(cache_key):
+                        logger.info(f"  ✓ {driver} {metric} (already cached)")
+                        continue
 
-                logger.info(f"  Caching: {driver} {metric}...")
-                await telemetry_service.get_telemetry(
-                    year=year,
-                    round_number=round_number,
-                    session_key="R",
-                    driver_code=driver,
-                    metric=metric,
-                    lap_number=0,
-                )
-                logger.info(f"  Done: {driver} {metric}")
-                # Small delay to avoid hammering FastF1
-                await asyncio.sleep(2)
-
-            except Exception as e:
-                logger.warning(f"  Failed {driver} {metric}: {e}")
-                continue
+                    logger.info(f"  Fetching {driver} {metric}...")
+                    await telemetry_service.get_telemetry(
+                        year=year,
+                        round_number=round_number,
+                        session_key="R",
+                        driver_code=driver,
+                        metric=metric,
+                        lap_number=0,
+                    )
+                    logger.info(f"  ✓ {driver} {metric}")
+                    await asyncio.sleep(1)  # be nice to FastF1
+                except Exception as e:
+                    logger.warning(f"  ✗ {driver} {metric}: {e}")
 
 
 async def run_startup_precache() -> None:
-    """
-    Full pre-cache run on startup.
-    Runs in background — never blocks the server from starting.
-    """
+    """Full pre-cache — runs in background on startup."""
     year = datetime.now().year
-    logger.info("=== Starting DataF1 startup pre-cache ===")
+    logger.info("═══ DataF1 startup pre-cache starting ═══")
 
-    # 1. Race schedule (fast — no FastF1 telemetry)
+    rounds = await get_completed_rounds(year)
+    logger.info(f"Pre-caching rounds: {rounds}")
+
+    # 1. Race schedule (fast)
     await precache_race_schedule(year)
 
-    # 2. Current round sessions + drivers
-    current_round = await get_current_round(year)
-    logger.info(f"Current round: {current_round}")
+    # 2. Sessions + drivers for last 3 races + next race
+    all_rounds_to_cache = rounds.copy()
+    if rounds:
+        next_round = max(rounds) + 1
+        all_rounds_to_cache.append(next_round)
+    await precache_all_sessions_and_drivers(year, all_rounds_to_cache)
 
-    await precache_sessions(year, current_round)
+    # 3. Telemetry for last 3 completed races (slowest)
+    await precache_telemetry_batch(year, rounds)
 
-    # Also cache next round if it exists
-    next_round = current_round + 1
-    try:
-        races = await races_service.get_races(year)
-        if any(r.round == next_round for r in races):
-            await precache_sessions(year, next_round)
-    except Exception:
-        pass
-
-    # 3. Telemetry for current round top drivers (slowest — do last)
-    await precache_telemetry(year, current_round)
-
-    logger.info("=== Startup pre-cache complete ===")
+    logger.info("═══ Pre-cache complete ═══")
